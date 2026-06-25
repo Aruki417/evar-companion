@@ -28,22 +28,29 @@ from fastapi.middleware.cors import CORSMiddleware
 # ──────────────────────────────────────────────────────────────────────────
 # Configuration
 # ──────────────────────────────────────────────────────────────────────────
+def _get_secret(key, default=""):
+    """Read from env vars first, then Streamlit secrets (for cloud deployment)."""
+    val = os.getenv(key, "")
+    if val:
+        return val
+    try:
+        import streamlit as st
+        return st.secrets.get(key, default)
+    except Exception:
+        return default
+
 # ── watsonx.ai (primary) ──
-# Needs API key PLUS either a project_id OR a space_id.
-# If your IBM Cloud project creation is broken, use a Deployment Space instead:
-#   Go to https://dataplatform.cloud.ibm.com/wx/developer-access
-#   Get the Space ID from there and set WATSONX_SPACE_ID.
-WATSONX_API_KEY    = os.getenv("WATSONX_API_KEY", "")
-WATSONX_PROJECT_ID = os.getenv("WATSONX_PROJECT_ID", "")   # from project Manage → General
-WATSONX_SPACE_ID   = os.getenv("WATSONX_SPACE_ID", "")     # alternative: deployment space
-WATSONX_URL        = os.getenv("WATSONX_URL", "https://us-south.ml.cloud.ibm.com")
-WATSONX_MODEL_ID   = os.getenv("WATSONX_MODEL_ID", "ibm/granite-3-3-8b-instruct")
+WATSONX_API_KEY    = _get_secret("WATSONX_API_KEY")
+WATSONX_PROJECT_ID = _get_secret("WATSONX_PROJECT_ID")
+WATSONX_SPACE_ID   = _get_secret("WATSONX_SPACE_ID")
+WATSONX_URL        = _get_secret("WATSONX_URL") or "https://us-south.ml.cloud.ibm.com"
+WATSONX_MODEL_ID   = _get_secret("WATSONX_MODEL_ID") or "ibm/granite-4-h-small"
 
 # ── Ollama (fallback, local) ──
 OLLAMA_URL    = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
 GRANITE_MODEL = os.getenv("GRANITE_MODEL", "granite3.2:2b")
 
-# ── LangFlow (optional extra layer, tried before either of the above if set) ──
+# ── LangFlow (optional) ──
 LANGFLOW_URL   = os.getenv("LANGFLOW_URL", "")
 LANGFLOW_TOKEN = os.getenv("LANGFLOW_TOKEN", "")
 
