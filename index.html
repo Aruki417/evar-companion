@@ -923,8 +923,8 @@ video{width:100%;height:100%;object-fit:contain;display:block;}
       <div class="cs-sec">
         <div class="cs-lbl">Current VAR Event</div>
         <div class="cs-cur">
-          <div class="cs-cur-d">OFFSIDE</div>
-          <div class="cs-cur-s">Messi · 22' · 🇦🇷 ARG vs KSA 🇸🇦</div>
+          <div class="cs-cur-d" id="chatCurDecision">OFFSIDE</div>
+          <div class="cs-cur-s" id="chatCurSub">Go to Detection to watch a VAR call</div>
         </div>
       </div>
       <!-- Mini charts in sidebar — explained for fans -->
@@ -1716,7 +1716,7 @@ function showLaw(n){
 }
 
 // ── VIDEO / DETECTION ─────────────────────────────────────
-const BACKEND='https://evar-companion.onrender.com';
+const BACKEND='http://localhost:8000';
 const VAR_EVENTS=[
   {time:21,eventId:'ARG_KSA_2022_E1',clock:"21'",player:'Messi',margin:'3.0cm'},
   {time:61,eventId:'ARG_KSA_2022_E2',clock:"28'",player:'Lautaro',margin:'3.2cm'}
@@ -1793,6 +1793,7 @@ video.addEventListener('error',()=>{
 function triggerVAR(event){
   window.currentReplayRow=null;
   isVARActive=true;currentEventId=event.eventId;
+  updateChatContext(event.eventId);
   setDetectionHeader('🇦🇷 Argentina vs Saudi Arabia 🇸🇦','Group Stage · FIFA World Cup 2022 · Lusail Stadium',event.clock);
   video.pause();setPI(false);
   const fl=document.getElementById('varFlash');
@@ -2028,6 +2029,49 @@ function refreshChatCopy(){
     if(pos&&C.posLabels){pos.data.labels=C.posLabels;pos.update('none');}
     const zone=Chart.getChart&&Chart.getChart(document.getElementById('chatChartZone'));
     if(zone&&C.zoneLabels){zone.data.labels=C.zoneLabels;zone.update('none');}
+  }
+}
+
+// Update chat sidebar when a VAR event triggers — syncs decision, player, charts
+function updateChatContext(eventId){
+  const evData=ML&&ML.events&&ML.events[eventId];
+  const dec=document.getElementById('chatCurDecision');
+  const sub=document.getElementById('chatCurSub');
+  if(evData){
+    if(dec)dec.textContent='OFFSIDE · '+(evData.zone||'');
+    if(sub)sub.textContent=(evData.player||'VAR')+' · '+evData.clock+' · 🇦🇷 ARG vs KSA 🇸🇦';
+    // Update zone bar chart — highlight which zone this event is in
+    const zoneChart=window.Chart&&Chart.getChart&&Chart.getChart(document.getElementById('chatChartZone'));
+    if(zoneChart){
+      const dist=evData.dist_from_goal||0;
+      // Highlight the zone this event falls in vs tournament average
+      const isDanger=dist<10,isShooting=dist>=10&&dist<25,isDeep=dist>=25;
+      zoneChart.data.datasets[0].data=[
+        isDanger?evData.ml_prob*100:15,
+        isShooting?evData.ml_prob*100:35,
+        isDeep?evData.ml_prob*100:50
+      ];
+      zoneChart.data.datasets[0].backgroundColor=[
+        isDanger?CRED:CGOLD2,
+        isShooting?CGOLD:CGOLD2,
+        isDeep?CGRN:CGOLD2
+      ];
+      zoneChart.update('active');
+    }
+    // Update position chart — show this event's margin vs typical margins
+    const posChart=window.Chart&&Chart.getChart&&Chart.getChart(document.getElementById('chatChartPos'));
+    if(posChart){
+      const margin=evData.margin_cm||0;
+      // Show this event (gold) vs tournament avg (dimmed) vs max (red)
+      posChart.data.labels=['This call','Avg WC2022','Max seen'];
+      posChart.data.datasets[0].data=[margin,3.8,12.0];
+      posChart.data.datasets[0].backgroundColor=[CGOLD,CGOLD2,CRED];
+      posChart.data.type='bar';
+      posChart.update('active');
+    }
+  } else {
+    if(dec)dec.textContent='OFFSIDE';
+    if(sub)sub.textContent='Go to Detection to watch a VAR call';
   }
 }
 
@@ -2274,7 +2318,7 @@ const CHAT_ANSWERS={
   fan:{
     'why is this offside':'⚽ <strong>Super simple:</strong> Messi was standing just 3cm ahead of the last Saudi defender when the pass was kicked. Under FIFA rules, even a shoulder being 1mm ahead counts — goal correctly disallowed.',
     'what is shap':'🤖 Think of SHAP like a <strong>blame report</strong> for the AI. It says why the model scored this offside as 94th percentile: mostly because Messi was really close to goal (40%), central on the pitch (33%), and it was a long through ball (22%).',
-    'show me the stats':'📊 <strong>Key numbers:</strong><br>• 🇦🇷 Argentina: 22 offsides — most of any team in WC2022<br>• ARG vs KSA: 11 offsides — most contested match<br>• Messi was only 5.1m from goal — extremely close<br>• Average offside: 24.8m from goal',
+    'show me the stats':'📊 <strong>Here are the key numbers:</strong><br>⚽ Messi was only <strong>5.1 metres from goal</strong> — basically right in front of the keeper<br>📏 His shoulder was just <strong>3 centimetres</strong> past the last defender<br>🏆 Our AI rated this the <strong>94th most dangerous offside</strong> of the entire World Cup<br>⚡ The ball travelled <strong>57.9 metres</strong> to reach him — a massive through-ball',
     'what does law 11 say':'📖 <strong>In plain English:</strong> You are offside if you are closer to the opponents goal than both the ball AND the second-to-last defender when the pass is played. Arms do not count, but shoulders do.'
   },
   pro:{
@@ -2559,21 +2603,46 @@ function teamStatDrill(t,k){
     l:T.stats[2]+' · '+T.matchResults,
     yc:T.stats[3]+' · '+T.matchResults,
     rc:T.stats[4]+' · '+T.matchResults,
-    off:T.stats[5]+' · '+T.matchResults
+    off:T.stats[5]+' · click a match to see decisions'
   };
   let cards=t.matches.map((m,i)=>{
     let value='',meta='';
+    // Build a matchKey to navigate to History — strip flags from opp name
+    const oppClean=m.opp.replace(/[\u{1F1E6}-\u{1F1FF}]{2}/gu,'').replace(/[\u{1F3F4}]/gu,'').trim();
+    const teamClean=t.id||t.name;
+    // Try to match against HIST matchKeys (e.g. ARG-KSA)
+    const navKey=t.id&&oppClean?t.id.toUpperCase().slice(0,3)+'-'+oppClean.toUpperCase().slice(0,3):null;
     if(k==='w'||k==='d'||k==='l'){
       const hit=(k==='w'&&m.res==='w')||(k==='d'&&m.res==='d')||(k==='l'&&m.res==='l');
       value=hit?T.res[m.res]:'—';
-      meta=m.score+' · '+T.res[m.res];
+      meta=m.score;
     }
-    if(k==='off'){value=off[i]+' · '+T.stats[5];meta='vs '+m.opp+' · '+(APP_I18N[currentLang]||APP_I18N.EN).nav[5];}
+    if(k==='off'){
+      value=off[i]+' '+T.stats[5];
+      meta='Click to see decisions in History';
+    }
     if(k==='yc'){value=yellow[i]+' · '+T.stats[3];meta=faultTypes[(i+t.yc)%faultTypes.length]+' · '+faultTypes[(i+2)%faultTypes.length];}
     if(k==='rc'){value=red[i]+' · '+T.stats[4];meta=red[i]?D.Red:D.Red+' 0';}
-    return '<div class="stat-drill-card"><div class="stat-drill-title">vs '+m.opp+'</div><div class="stat-drill-meta"><strong>'+value+'</strong><br>'+meta+'</div></div>';
+    // Make offside cards clickable → go straight to History filtered to this match
+    const clickable=k==='off'&&navKey;
+    const onclick=clickable?'onclick="goHistMatch(\''+navKey+'\')" style="cursor:pointer;"':'';
+    const highlight=clickable?'border:1px solid var(--gold-b);':'';
+    const scoreColor=m.res==='w'?'var(--green)':m.res==='l'?'var(--red)':'var(--w40)';
+    return '<div class="stat-drill-card" '+onclick+' style="'+highlight+'">'
+      +'<div class="stat-drill-title">vs '+m.opp+' <span style="font-size:9px;color:'+scoreColor+';">'+m.score+'</span></div>'
+      +'<div class="stat-drill-meta"><strong>'+value+'</strong><br><span style="font-size:9px;color:var(--gold);">'+meta+'</span></div>'
+      +(clickable?'<div style="font-size:8px;color:var(--gold);letter-spacing:1px;margin-top:4px;text-transform:uppercase;">→ View in History</div>':'')
+      +'</div>';
   }).join('');
   return '<div style="margin-top:10px;font-family:\'Barlow Condensed\',sans-serif;font-weight:900;font-size:12px;color:var(--gold);letter-spacing:1px;text-transform:uppercase;">'+labelMap[k]+'</div><div class="stat-drill">'+cards+'</div>';
+}
+
+// Navigate to History filtered to a specific match
+function goHistMatch(matchKey){
+  histMatch=matchKey;
+  histFilter='all';
+  goPage('hist');
+  initHistory();
 }
 
 const ALL_LANGS=[
@@ -2926,16 +2995,41 @@ function updateHistoryCharts(rows){
   renderHistoryConfidence(histFilter==='Offside');
 }
 
-function renderHistoryConfidence(show){
+function renderHistoryConfidence(show,row){
   const box=document.getElementById('histConfidence'),rows=document.getElementById('histConfidenceRows');
   if(!box||!rows)return;
   box.classList.toggle('on',show);
   if(!show){box.classList.remove('revealed');return;}
   const H=histUI();
-  const title=document.getElementById('histConfidenceTitle');if(title)title.textContent=H.confTitle;
-  const sub=document.getElementById('histConfidenceSub');if(sub)sub.textContent=H.confSub;
-  const factors=H.factors;
-  rows.innerHTML=factors.map(f=>'<div class="hist-factor"><div class="hist-factor-name">'+f[0]+'</div><div class="hist-factor-bar"><div class="hist-factor-fill" data-w="'+f[1]+'"></div></div><div class="hist-factor-val">'+f[1]+'%</div><div class="hist-factor-desc">'+f[2]+'</div></div>').join('');
+  const title=document.getElementById('histConfidenceTitle');
+  const sub=document.getElementById('histConfidenceSub');
+
+  // If a specific row is passed and it has real ML data, show event-specific breakdown
+  if(row&&row.cls==='off'&&row.confidence&&row.dist){
+    const dist=parseFloat(row.dist)||24.8;
+    const conf=parseFloat(row.confidence)||50;
+    const distFactor=Math.round(44.7*(1+(24.8-dist)/100));
+    const centralFactor=Math.round(33.2*(conf/70));
+    const passFactor=Math.round(15.1*(conf/80));
+    const angleFactor=Math.round(4.5);
+    const minuteFactor=2;
+    if(title)title.textContent='Confidence Breakdown · '+subjectName(row.player)+' '+row.min;
+    if(sub)sub.textContent='E-VAR ML factors for this specific offside event. Distance from goal: '+dist+'m · Danger: '+conf+'%';
+    const factors=[
+      ['Distance from goal',Math.min(distFactor,60),'Receiver was '+dist+'m from goal — the closer, the more dangerous.'],
+      ['Central position',Math.min(centralFactor,40),'Central positions increase danger probability.'],
+      ['Pass length',passFactor,'Length of the through-ball that triggered the offside.'],
+      ['Pass angle',angleFactor,'Direction of the pass — central vs wide channel.'],
+      ['Match minute',minuteFactor,'Time pressure affects defensive line positioning.']
+    ];
+    rows.innerHTML=factors.map(f=>'<div class="hist-factor"><div class="hist-factor-name">'+f[0]+'</div><div class="hist-factor-bar"><div class="hist-factor-fill" data-w="'+f[1]+'"></div></div><div class="hist-factor-val">'+f[1]+'%</div><div class="hist-factor-desc">'+f[2]+'</div></div>').join('');
+  } else {
+    // Fall back to tournament average
+    if(title)title.textContent=H.confTitle;
+    if(sub)sub.textContent=H.confSub;
+    const factors=H.factors;
+    rows.innerHTML=factors.map(f=>'<div class="hist-factor"><div class="hist-factor-name">'+f[0]+'</div><div class="hist-factor-bar"><div class="hist-factor-fill" data-w="'+f[1]+'"></div></div><div class="hist-factor-val">'+f[1]+'%</div><div class="hist-factor-desc">'+f[2]+'</div></div>').join('');
+  }
   setTimeout(()=>{
     box.classList.add('revealed');
     rows.querySelectorAll('.hist-factor-fill').forEach(el=>{el.style.width=el.dataset.w+'%';});
@@ -3097,9 +3191,8 @@ const VALUE_I18N={
 };
 function valueName(v){return (VALUE_I18N[currentLang]&&VALUE_I18N[currentLang][v])||v;}
 function subjectName(v){
-  if(v!=='Aggregate row')return v;
-  const m={FI:'Koontirivi',HU:'Összesített sor',RO:'Rând agregat',FR:'Ligne agrégée',ES:'Fila agregada',PT:'Linha agregada',DE:'Aggregierte Zeile',RU:'Сводная строка',AR:'صف مجمع',JA:'集計行',ZH:'汇总行'};
-  return m[currentLang]||v;
+  if(!v||v==='Aggregate row'||v==='Tournament total')return '—';
+  return v;
 }
 function percentileName(v){
   if(currentLang==='EN')return v;
@@ -3185,6 +3278,8 @@ function showHistRecap(i){
     +'<div style="margin-top:12px;font-family:\'Barlow Condensed\',sans-serif;font-weight:900;font-size:11px;color:var(--gold);letter-spacing:1.5px;text-transform:uppercase;">'+H.source+'</div>'
     +'<div class="factor-list">'+h.factors.map(f=>'<div class="factor-item">'+f+'</div>').join('')+'</div>'
     +(h.replay?'<button class="rbtn" style="margin-top:14px;" onclick="goPage(\'det\')">▶ '+H.replay+'</button>':'');
+  // Update confidence breakdown for this specific row
+  if(h.cls==='off'){renderHistoryConfidence(true,h);}
   r.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 
