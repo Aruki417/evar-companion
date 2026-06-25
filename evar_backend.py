@@ -142,15 +142,21 @@ def build_verdict_prompt(ev: dict, mode: str, language: str) -> str:
     lang = LANG_NAMES.get(language.upper(), "English")
     if mode == "pro":
         style = (
-            "You are a VAR analyst writing for football professionals. "
-            "Be precise and reference the offside law (Law 11), the offside margin, "
-            "the ML danger probability and the percentile. 2-3 sentences."
+            "You are a VAR technical analyst writing a match report. "
+            "Write exactly 3 sentences. "
+            "Sentence 1: cite FIFA Law 11 and state the exact offside margin in centimetres. "
+            "Sentence 2: state the ML danger probability percentage and tournament percentile rank. "
+            "Sentence 3: explain the two key spatial factors — distance from goal and pass length. "
+            "Use precise technical language. Do not use casual expressions."
         )
     else:
         style = (
-            "You are explaining a VAR decision to a casual football fan who may not "
-            "know the rules. Use plain, friendly language, no jargon, no statistics. "
-            "2-3 short sentences."
+            "You are a football commentator explaining a VAR decision simply. "
+            "Write exactly 2 sentences in plain everyday language. "
+            "No laws, no statistics, no percentiles, no technical terms whatsoever. "
+            "Sentence 1: say whose shoulder was offside and by how much in simple terms. "
+            "Sentence 2: say how close to goal the player was and why the goal was disallowed. "
+            "Keep it friendly and simple — imagine explaining to someone who rarely watches football."
         )
     return (
         f"{style}\n\n"
@@ -170,12 +176,21 @@ def build_verdict_prompt(ev: dict, mode: str, language: str) -> str:
 
 def build_chat_prompt(ev: dict, question: str, mode: str, language: str) -> str:
     lang = LANG_NAMES.get(language.upper(), "English")
-    tone = ("for a casual fan, plain language, no jargon"
-            if mode == "fan" else
-            "for a football professional, precise, cite Law 11 and the stats")
+    if mode == "pro":
+        tone = (
+            "You are a VAR technical analyst. Use precise football and law terminology. "
+            "Reference Law 11, margins, danger probability, and spatial data where relevant. "
+            "Write 2-3 technical sentences."
+        )
+    else:
+        tone = (
+            "You are a friendly football fan explaining to another fan. "
+            "Use simple words, no jargon, no statistics, no law references. "
+            "Keep it short — 1-2 sentences maximum, like a text message."
+        )
     return (
-        f"You are E-VAR Companion, an assistant that explains VAR offside decisions {tone}. "
-        f"Answer ONLY in {lang}. Keep it to 2-3 sentences.\n\n"
+        f"{tone}\n\n"
+        f"Answer ONLY in {lang}.\n\n"
         f"Context — the VAR decision being discussed:\n"
         f"- {ev['player']} ruled offside at {ev['clock']} in {ev['match']}\n"
         f"- Margin {ev['margin_cm']}cm, {ev['dist_from_goal_m']}m from goal, "
@@ -297,7 +312,7 @@ def root():
         "service": "E-VAR Companion backend",
         "status": "ok",
         "primary_model": WATSONX_MODEL_ID,
-        "watsonx_configured": bool(WATSONX_API_KEY and WATSONX_PROJECT_ID),
+        "watsonx_configured": bool(WATSONX_API_KEY and (WATSONX_PROJECT_ID or WATSONX_SPACE_ID)),
         "fallback_model": GRANITE_MODEL,
         "langflow": bool(LANGFLOW_URL),
         "events": list(EVENTS.keys()),
@@ -306,19 +321,27 @@ def root():
 
 @app.get("/health")
 async def health():
-    """Quick check of which model layer(s) are reachable, in priority order."""
+    """Check model layers in priority order: watsonx → LangFlow → Ollama."""
+    configured = bool(WATSONX_API_KEY and (WATSONX_PROJECT_ID or WATSONX_SPACE_ID))
     wx = await call_watsonx("Reply with the single word: ok")
     result = {
-        "watsonx_configured": bool(WATSONX_API_KEY and WATSONX_PROJECT_ID),
+        "watsonx_configured": configured,
         "watsonx_reachable": wx is not None,
         "watsonx_model": WATSONX_MODEL_ID,
     }
+    if _watsonx_init_error:
+        result["watsonx_note"] = _watsonx_init_error
+    # Only check lower layers if watsonx didn't work
     if not wx:
+        if LANGFLOW_URL:
+            lf = await call_langflow("Reply with the single word: ok")
+            result["langflow_configured"] = True
+            result["langflow_reachable"] = lf is not None
+            if lf:
+                return result  # LangFlow working — no need to check Ollama
         ol = await call_ollama("Reply with the single word: ok")
         result["ollama_reachable"] = ol is not None
         result["ollama_model"] = GRANITE_MODEL
-    if _watsonx_init_error:
-        result["watsonx_note"] = _watsonx_init_error
     return result
 
 
@@ -340,7 +363,15 @@ async def var_event(event_id: str, mode: str = "fan", language: str = "EN"):
 
 @app.get("/chat/{event_id}")
 async def chat(event_id: str, q: str = "", mode: str = "fan", language: str = "EN"):
-    ev = EVENTS.get(event_id) or next(iter(EVENTS.values()))
+    ev = EVENTS.get(event_id)
+    # P3: return error for unknown event — consistent with /var-event behaviour
+    if not ev:
+        return {
+            "ai_response": {"explanation": f"Event '{event_id}' not found."},
+            "event_id": event_id,
+            "error": f"Unknown event_id '{event_id}'",
+            "valid_event_ids": list(EVENTS.keys()),
+        }
     if not q.strip():
         return {"ai_response": {"explanation": "Ask a question about the VAR decision."}}
     prompt = build_chat_prompt(ev, q, mode, language)
