@@ -1,0 +1,5 @@
+fastapi
+uvicorn
+httpx
+ibm-watsonx-ai
+streamlit
