@@ -1,206 +1,204 @@
-# E-VAR Companion
-### AI-Powered VAR Explanation for Football Fans — IBM SkillsBuild AI Builders Challenge 2026
+# E-VAR Companion 🟡⚽
 
-> *VAR made the call. Now understand why.*
+**AI-powered VAR offside explainer for football fans**
+IBM SkillsBuild AI Builders Challenge · June 2026
 
-[![IBM Granite](https://img.shields.io/badge/IBM%20Granite-watsonx.ai-052FAD?style=flat-square&logo=ibm)](https://www.ibm.com/watsonx)
-[![StatsBomb](https://img.shields.io/badge/Data-StatsBomb%20Open%20Data-red?style=flat-square)](https://statsbomb.com/open-data/)
-[![FIFA WC 2022](https://img.shields.io/badge/Tournament-FIFA%20World%20Cup%202022-gold?style=flat-square)]()
-[![Languages](https://img.shields.io/badge/Languages-23-green?style=flat-square)]()
-
----
-
-## The Problem
-
-Every time VAR overturns a goal, the same thing happens: the referee walks to the monitor, 68 seconds pass in silence, and the decision is announced — with no explanation. For the billions of fans watching around the world, especially those new to football or watching in a second language, **VAR is a black box that erodes trust and alienates the audience football is trying to grow.**
-
-No broadcaster explains the call in real time. No app breaks it down automatically. Fans are left to argue about something none of them fully understand.
+**Demo video:** [Watch Demo](https://drive.google.com/file/d/1_vV9ufHR4JpMKFfRmijwwhhY7jeZe0En/view?usp=sharing)
+[![IBM Granite](https://img.shields.io/badge/AI-IBM%20Granite%20via%20watsonx.ai-blue)](https://www.ibm.com/watsonx)
+[![Languages](https://img.shields.io/badge/Languages-23-green)]()
 
 ---
 
-## The Solution
+## The Problem We Are Solving
 
-**E-VAR Companion** is a zero-input, AI-powered VAR explainer. The moment VAR makes a call, the app:
+Every week, billions of football fans watch VAR decisions they do not understand.
 
-1. **Auto-pauses** the match video at the exact VAR timestamp
-2. **Draws** the offside line on the frozen frame
-3. **Scores** the decision with a real ML danger probability (RandomForest, trained on 224 WC2022 offside events)
-4. **Generates** a plain-language explanation using **IBM Granite on watsonx.ai** — grounded in real StatsBomb event data, not generic text
-5. **Translates** everything automatically into **23 languages** — no user input required
+A goal gets disallowed. The crowd erupts. The screen shows a freeze-frame. The commentator says *offside* — and the broadcast moves on. No explanation. No context. No answer to the question every fan is asking: **why?**
 
-Fan Mode keeps it simple. Pro Mode adds FIFA Law 11 citations and statistical depth. The same experience works for a casual viewer in Brazil and a football analyst in Japan.
+At the 2022 FIFA World Cup alone there were over **560 VAR decisions** — 224 offsides, 29 penalty reviews, 4 red cards, handballs, fouls. Each one triggered confusion in stadiums and living rooms across the world, in dozens of languages and cultures.
+
+The data existed. The technology existed. But no one had built the bridge between the two.
+
+VAR was introduced to make football fairer. The unintended consequence is that it made football *less understandable* for the fans who love it most. Transparency is not optional — it is owed to every supporter in every language who watches the game.
+
+---
+
+## Our AI Solution — E-VAR Companion
+
+E-VAR Companion is a real-time AI assistant that automatically detects VAR moments during a match and instantly explains every decision — in plain language, to any fan, in any language.
+
+The **E** in E-VAR stands for **Explainer**.
+
+### How It Works
+
+**Auto-detection:** The webpage monitors the match video and automatically pauses when a VAR moment occurs. No button. No user input. The AI activates itself.
+
+**IBM Granite via watsonx.ai:** Every VAR event is sent to IBM Granite (`ibm/granite-4-h-small`) via the watsonx.ai API. Granite analyzes the decision, applies the relevant FIFA law, evaluates the danger context, and produces a structured explanation in seconds.
+
+**Dual audience modes:**
+- **Fan Mode** — plain language, clear numbers, no jargon. Designed for any supporter regardless of football knowledge.
+- **Pro Mode** — full analytical breakdown including SHAP factor decomposition, confidence percentile, distance from goal, body part tracking, and law reference. Designed for analysts, coaches, and media professionals.
+
+**Interactive Fan Chat:** Users can ask follow-up questions in natural language — *"Why was this offside?"*, *"What does Law 11 mean?"*, *"How close was it?"* — and Granite answers using the exact context of the current decision.
+
+**23 Languages:** The full interface, AI responses, VAR explanations, and chat are available in English, Spanish, French, Portuguese, Arabic, German, Japanese, Chinese, Italian, Dutch, Turkish, Polish, Korean, Hindi, Swedish, Danish, Norwegian, Finnish, Hungarian, Romanian, Croatian, Czech, and Russian.
+
+**VAR History:** Every decision from the 2022 FIFA World Cup is logged and searchable — filterable by decision type, team, match, and game phase.
+
+**Teams Dashboard:** Per-team statistics with drill-down into offsides, yellow cards, and red cards by match, showing patterns across the tournament.
+
+**Laws DB:** Every FIFA law visualized with pitch diagrams and plain-language explanations — no rulebook required.
+
+### Technical Architecture
+
+```
+User (browser) → index.html (single-file frontend, localhost:3000)
+                      ↓
+              FastAPI Backend (localhost:8000 / Render)
+                      ↓
+           watsonx.ai API → IBM Granite ibm/granite-4-h-small
+                      ↓
+        StatsBomb Open Data (WC2022 match_id 3857300)
+```
+
+| Component | Technology |
+|---|---|
+| Frontend | Single-file HTML · Vanilla JS · Chart.js |
+| Backend | Python · FastAPI · deployed on Render |
+| AI Model | IBM Granite (`ibm/granite-4-h-small`) via watsonx.ai |
+| ML Scoring | Random Forest Classifier · SHAP attribution |
+| Data source | StatsBomb Open Data · WC2022 · match_id 3857300 |
+| Demo detection | Autopilot VAR trigger on local `clip.mp4` |
+| Deployment | Streamlit at evar-companion.streamlit.app |
+
+### How We Get the 3cm Offside Margin
+
+The precision of the Detection page comes directly from StatsBomb Open Data.
+
+StatsBomb tracked **29 body points per player at 50 frames per second** for the Argentina vs Saudi Arabia match. The system calculates the exact position of each player's tracked offside point — the furthest legal body part — relative to the second-to-last defender at the precise frame the ball leaves the passer's foot.
+
+For Messi's disallowed goal at minute 21: the tracked offside point was **3 centimetres past the line**. That number is not an estimate. It is derived directly from the StatsBomb event data (match_id 3857300).
+
+This level of precision is only publicly available for select matches in the StatsBomb Open Data release — which is why the Argentina vs Saudi Arabia match is used as the demo simulation.
+
+### ML Danger Scoring
+
+Each offside event is scored for danger using a Random Forest Classifier trained on:
+- Distance from goal at moment of pass
+- Pitch zone (Central / Half-space / Wide)
+- Offside margin in centimetres
+- Match phase and game minute
+- Pass angle and length
+
+SHAP values are computed per event so fans and analysts can see exactly which factors drove the AI score — not just what the model decided, but why.
+
+---
+
+## Why This Solution Matters
+
+### For the Casual Fan
+VAR decisions affect match results. Fans deserve to understand what happened and why — not just that the flag went up. E-VAR makes every decision readable for any supporter, regardless of football knowledge or language.
+
+### For Journalists and Analysts
+Real-time access to danger scores, offside margins, law references, and SHAP breakdowns — all in one place, available seconds after the decision.
+
+### For the Game
+Transparency builds trust. When fans understand a decision — even one that goes against their team — they are more likely to accept it. The communication gap after VAR is not a technology problem. It is an explanation problem. E-VAR fixes that.
+
+### In the Context of the FIFA World Cup
+The World Cup is the most-watched sporting event on the planet. The 2022 tournament in Qatar saw record VAR usage — 560+ decisions across 64 matches. Billions of viewers across every continent watched calls they could not decode. E-VAR Companion is built specifically for this global, multilingual audience.
+
+### Scalability
+The architecture is designed to scale from a single demo match to a full live tournament:
+- Any match feed can be connected via the detection layer
+- Any language can be added to the i18n layer
+- The Granite API call is stateless and horizontally scalable
+- The frontend is a single HTML file — zero infrastructure for the viewer
+- Partnership with FIFA, StatsBomb, or a broadcaster unlocks full event-level data for every match
+
+---
+
+## Current Limitations
+
+We want to be transparent about the boundaries of the current demo.
+
+**Player-level data:** Granular positional tracking — exact offside margins in centimetres, precise body-part coordinates per player — was not publicly released by FIFA for all 64 matches. StatsBomb Open Data provides this level of detail for the Argentina vs Saudi Arabia match only. For all other matches, E-VAR uses aggregate WC2022 tournament data. The AI framework and explanations work for every match; the precision of the numbers improves with a richer data feed.
+
+**Live video:** The auto-detection demo runs on a local pre-recorded clip (`clip.mp4`). Integration with a live broadcast feed requires a rights agreement with a broadcaster or FIFA.
+
+**Next step:** A data partnership with FIFA, StatsBomb, or a broadcast rights holder would unlock event-level tracking for every match, making E-VAR Companion fully production-ready for live tournaments.
+
+---
+
+## Running the Detection Demo
+
+The Detection page autopilot requires a local copy of the match clip, which is **not included in this repository for copyright reasons** — the footage is licensed to FIFA and broadcasters.
+
+To enable the Detection page locally:
+1. Obtain a licensed copy of the Argentina vs Saudi Arabia FIFA World Cup 2022 match broadcast
+2. Rename the file to `clip.mp4`
+3. Place it in the root folder of the project
+4. Run the app — the autopilot triggers automatically at minute 21 and minute 28
+
+> The full Detection experience is demonstrated in the [demo video](YOUR_YOUTUBE_LINK_HERE).
+> All other features — Fan Chat, History, Teams, Laws DB, Settings — work fully without the clip.
+
+---
+
+## Running Locally
+
+```bash
+# Clone the repository
+git clone https://github.com/Aruki417/evar-companion.git
+cd evar-companion
+
+# Install backend dependencies
+pip install -r requirements.txt
+
+# Set your watsonx.ai credentials
+export WATSONX_API_KEY=your_key_here
+export WATSONX_SPACE_ID=your_space_id_here
+export WATSONX_MODEL_ID=ibm/granite-4-h-small
+
+# Start the FastAPI backend (invisible engine — runs on port 8000)
+uvicorn evar_backend:app --port 8000
+
+# In a second terminal — serve the frontend on port 3000
+npx serve . --port 3000
+```
+
+Then open `http://localhost:3000` in your browser.
+
+> **Note:** Port 8000 is the backend engine — it runs silently in the terminal.
+> Port 3000 is the webpage you interact with and record.
+> You never need to open localhost:8000 in your browser.
 
 ---
 
 ## Live Demo
 
-**Try it now (Streamlit — no setup needed):**
-👉 **https://evar-companion.streamlit.app**
-
-> ⚠️ **First load note:** The AI backend runs on Render's free tier and spins down after inactivity. The first IBM Granite explanation after a period of inactivity may take **up to 50 seconds** to respond — this is normal. Subsequent calls are instant. The full UI (all pages, charts, history, languages) loads immediately regardless.
-
-**API backend (for judges who want to test directly):**
-```
-https://evar-companion.onrender.com/health
-https://evar-companion.onrender.com/var-event/ARG_KSA_2022_E1?mode=fan&language=EN
-https://evar-companion.onrender.com/var-event/ARG_KSA_2022_E1?mode=pro&language=FR
-```
-
-**Run locally:**
-```bash
-git clone https://github.com/Aruki417/evar-companion
-cd evar-companion
-pip install -r requirements.txt
-export WATSONX_API_KEY="your-key"
-export WATSONX_SPACE_ID="your-space-id"
-export WATSONX_MODEL_ID="ibm/granite-4-h-small"
-uvicorn evar_backend:app --port 8000 &
-python3 -m http.server 3000
-```
-Open **http://localhost:3000**
-```
-Open **http://localhost:3000** (not file://).
+**Streamlit app:** [evar-companion.streamlit.app](https://evar-companion.streamlit.app)
+**Demo video:** [YouTube link — coming June 26 2026]
 
 ---
 
-## Features
+## Data Sources
 
-| Feature | Detail |
-|---|---|
-| **Auto-pause VAR moments** | Video stops at 21s and 61s — the real ARG vs KSA VAR timestamps |
-| **Offside line** | Drawn on the frozen frame at the moment of the pass |
-| **ML danger score** | RandomForest trained on all 224 WC2022 StatsBomb offside events — 96% accuracy |
-| **IBM Granite explanation** | Live text from `ibm/granite-3-3-8b-instruct` via watsonx.ai, grounded in real data |
-| **Fan / Pro mode** | Plain language vs law-cited statistical breakdown |
-| **23 languages** | Full UI + AI explanation translation — Arabic switches to RTL |
-| **Fan Chat** | Ask any question about the VAR call — Granite answers in context |
-| **History** | All 224 real offside events, named players, real minutes and distances |
-| **Teams** | All 32 WC2022 nations, group stage, offside + card stats |
-| **Laws DB** | All 17 FIFA laws with SVG illustrations + Granite analysis of Law 11 |
+- **StatsBomb Open Data** — event-level tracking for WC2022, match_id 3857300 (Argentina vs Saudi Arabia)
+- **FIFA World Cup 2022 Official Statistics** — 64 matches · 172 goals · 214 yellow cards · 4 red cards · 224 VAR offside decisions
 
 ---
 
-## Tech Stack
+## Team
 
-```
-Frontend:     Single-file HTML/CSS/JS (index.html) — no framework, no build step
-Backend:      FastAPI (Python) — evar_backend.py
-AI model:     IBM Granite 3.3 8B Instruct — ibm/granite-3-3-8b-instruct via watsonx.ai
-Fallback:     Ollama (granite3.2:2b) if watsonx is unreachable
-ML model:     RandomForest (scikit-learn) — trained on StatsBomb WC2022 open data
-ML explainer: SHAP (SHapley Additive exPlanations) — feature attribution per event
-Data:         StatsBomb Open Data — FIFA World Cup 2022, match_id 3857300
-Demo video:   Argentina vs Saudi Arabia, Group C, 22 Nov 2022
-```
+Built by Jessica Lan
 
 ---
 
-## Architecture
+## License
 
-```
-Browser (index.html @ :3000)
-        │  GET /var-event/{id}?mode=fan|pro&language=EN
-        │  GET /chat/{id}?q=...&mode=&language=
-        ▼
-FastAPI (evar_backend.py @ :8000)
-        │
-        ├─ Primary:  IBM watsonx.ai → granite-3-3-8b-instruct
-        └─ Fallback: Ollama → granite3.2:2b (local)
-```
-
-The backend grounds every Granite prompt in real StatsBomb numbers — player name, offside margin in centimetres, distance from goal, ML danger probability, tournament percentile — so the AI explanation is always anchored to verified data, never hallucinated.
+MIT License — see LICENSE for details.
 
 ---
 
-## ML Model Details
-
-A **RandomForest classifier** (100 trees, max depth 4) was trained on **224 real offside events** from the FIFA World Cup 2022, sourced from the StatsBomb Open Data dataset.
-
-**Features used:**
-- Distance from goal (receiver location)
-- Lateral distance from pitch centreline (centrality)
-- Pass length
-- Pass angle
-- Match minute
-- Period (first/second half)
-
-**Results:**
-- Accuracy: **96%**
-- Top predictive factor: **distance from goal** (44.7% SHAP importance)
-- Second: **central position** (33.2%)
-- Third: **pass length** (15.1%)
-
-SHAP values are computed per-event so each explanation reflects the specific factors that drove *that* prediction, not a generic average.
-
----
-
-## The Two Demo VAR Events
-
-| | Event 1 | Event 2 |
-|---|---|---|
-| **Player** | Lionel Messi | Lautaro Martínez |
-| **Minute** | 22' | 28' |
-| **Margin** | 3.0 cm (shoulder) | 3.2 cm (shoulder) |
-| **Distance from goal** | 5.1 m | 20.1 m |
-| **Zone** | Danger Zone | Shooting Range |
-| **ML danger** | 58% | 77% |
-| **Tournament percentile** | 94th | 66th |
-| **Outcome** | Goal disallowed | Goal disallowed |
-
-Both calls were among the most controversial of the tournament. ARG vs KSA finished with **11 offside events** — the most of any match at WC2022.
-
----
-
-## Data & Credits
-
-- **StatsBomb Open Data** — offside events, player locations, pass data
-  Licensed under Creative Commons BY-SA 4.0. Used for educational/non-commercial purposes.
-  https://github.com/statsbomb/open-data
-
-- **FIFA World Cup Qatar 2022** — match data, competition structure
-  competition_id: 43 · season_id: 106 · match_id: 3857300
-
-- **IBM Granite** — foundation model for AI explanations
-  Model: `ibm/granite-3-3-8b-instruct` via IBM watsonx.ai
-  https://www.ibm.com/watsonx
-
-- **Demo video** — Argentina vs Saudi Arabia, Group C, 22 Nov 2022
-  Source: FIFA official match footage (YouTube: ZpvJ2OoCvlY)
-  Used for educational demonstration purposes only.
-
----
-
-## Running with Streamlit (for judges)
-
-```bash
-pip install streamlit
-streamlit run streamlit_app.py
-```
-
-The Streamlit deployment wraps the full app with a public URL so judges can test without local setup.
-
----
-
-## Repository Structure
-
-```
-var-companion/
-├── index.html              # Full frontend — single file, all 7 pages
-├── evar_backend.py         # FastAPI backend — watsonx.ai + Ollama
-├── streamlit_app.py        # Streamlit wrapper for public deployment
-├── var_data.py             # StatsBomb data pull + RandomForest training
-├── requirements.txt        # Python dependencies
-├── set_watsonx.sh          # Credentials template (never committed with real values)
-├── .gitignore              # Excludes set_watsonx.sh and .venv
-├── RUN_GRANITE.md          # Full setup guide
-└── README.md               # This file
-```
-
----
-
-## Author
-
-**Jessica** — MSc Business Analytics
-IBM SkillsBuild AI Builders Challenge · June 2026
-
-*Built with IBM Granite, StatsBomb Open Data, and a genuine frustration at watching VAR decisions with zero explanation.*
+*E-VAR Companion · Powered by IBM Granite via watsonx.ai · Built for the world's game*

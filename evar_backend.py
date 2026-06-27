@@ -21,6 +21,7 @@ Data: StatsBomb Open Data · FIFA World Cup 2022
 """
 
 import os
+from typing import Optional
 import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -47,7 +48,7 @@ WATSONX_URL        = _get_secret("WATSONX_URL") or "https://us-south.ml.cloud.ib
 WATSONX_MODEL_ID   = _get_secret("WATSONX_MODEL_ID") or "ibm/granite-4-h-small"
 
 # ── Ollama (fallback, local) ──
-OLLAMA_URL    = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
+OLLAMA_URL    = os.getenv("OLLAMA_URL", "")
 GRANITE_MODEL = os.getenv("GRANITE_MODEL", "granite3.2:2b")
 
 # ── LangFlow (optional) ──
@@ -98,29 +99,33 @@ EVENTS = {
         "match": "Argentina vs Saudi Arabia (Group C, 22 Nov 2022)",
         "player": "Lionel Messi",
         "clock": "22'",
-        "body_part": "Shoulder",
+        "body_part": "Tracked offside point",
         "margin_cm": 3.0,
         "dist_from_goal_m": 5.1,
         "pass_length_m": 57.9,
         "zone": "Danger Zone (within 10m of goal)",
         "ml_danger_prob": 0.582,
         "danger_percentile": 94,
+        "law_reference": "FIFA Law 11 — Offside",
         "outcome": "Goal disallowed for offside",
         "top_factors": "distance from goal (5.1m) and a long 57.9m through-ball",
+        "source_note": "Public match reports confirm the goal was ruled out for offside; the exact body point and centimetre margin are demo model fields unless verified against official semi-automated offside output.",
     },
     "ARG_KSA_2022_E2": {
         "match": "Argentina vs Saudi Arabia (Group C, 22 Nov 2022)",
         "player": "Lautaro Martínez",
         "clock": "28'",
-        "body_part": "Shoulder",
+        "body_part": "Tracked offside point",
         "margin_cm": 3.2,
         "dist_from_goal_m": 20.1,
         "pass_length_m": 34.2,
         "zone": "Shooting Range (10–25m from goal)",
         "ml_danger_prob": 0.766,
         "danger_percentile": 66,
+        "law_reference": "FIFA Law 11 — Offside",
         "outcome": "Goal disallowed for offside",
         "top_factors": "distance from goal (20.1m) and a central pitch position",
+        "source_note": "Public match reports confirm the goal was ruled out for offside; the exact body point and centimetre margin are demo model fields unless verified against official semi-automated offside output.",
     },
 }
 
@@ -142,21 +147,19 @@ def build_verdict_prompt(ev: dict, mode: str, language: str) -> str:
     lang = LANG_NAMES.get(language.upper(), "English")
     if mode == "pro":
         style = (
-            "You are a VAR technical analyst writing a match report. "
-            "Write exactly 3 sentences. "
-            "Sentence 1: cite FIFA Law 11 and state the exact offside margin in centimetres. "
-            "Sentence 2: state the ML danger probability percentage and tournament percentile rank. "
-            "Sentence 3: explain the two key spatial factors — distance from goal and pass length. "
-            "Use precise technical language. Do not use casual expressions."
+            "You are a professional football analyst. Answer in 3-4 flowing sentences. "
+            "No bullet points. No bold text. No markdown. Respond directly to the question asked "
+            "using the event data provided."
         )
     else:
         style = (
-            "You are a football commentator explaining a VAR decision simply. "
-            "Write exactly 2 sentences in plain everyday language. "
-            "No laws, no statistics, no percentiles, no technical terms whatsoever. "
-            "Sentence 1: say whose shoulder was offside and by how much in simple terms. "
-            "Sentence 2: say how close to goal the player was and why the goal was disallowed. "
-            "Keep it friendly and simple — imagine explaining to someone who rarely watches football."
+            "You are a friendly football commentator. Answer in 2-3 short clear sentences. "
+            "Never start with Hi, Hey, Totally or Similar greetings. Respond directly to the question asked "
+            "using the event data provided. Sound like a knowledgeable friend watching the match with the fan. "
+            "Do not add sympathy, emotional reactions, or comfort phrases. "
+            "Use simple words like 'just ahead', 'the goal had to come back', and 'that is why VAR stepped in'. "
+            "Avoid stiff phrases such as 'violating Law 11', 'determination was made', 'in the context of', "
+            "'aligning with standards', or 'StatsBomb' unless the fan specifically asks about data sources."
         )
     return (
         f"{style}\n\n"
@@ -164,11 +167,16 @@ def build_verdict_prompt(ev: dict, mode: str, language: str) -> str:
         f"Facts about this VAR decision:\n"
         f"- Match: {ev['match']}\n"
         f"- Player ruled offside: {ev['player']} at {ev['clock']}\n"
-        f"- The {ev['body_part'].lower()} was {ev['margin_cm']}cm beyond the last defender\n"
-        f"- Receiver was {ev['dist_from_goal_m']}m from goal in the {ev['zone']}\n"
-        f"- ML danger probability: {round(ev['ml_danger_prob']*100)}% "
-        f"({ev['danger_percentile']}th percentile of all WC2022 offsides)\n"
+        f"- Tracked body point: {ev['body_part']}\n"
+        f"- Offside margin: {ev['margin_cm']}cm beyond the last defender\n"
+        f"- Distance from goal: {ev['dist_from_goal_m']}m\n"
+        f"- Pitch zone: {ev['zone']}\n"
+        f"- Pass length: {ev['pass_length_m']}m\n"
+        f"- Danger score: {round(ev['ml_danger_prob']*100)}%\n"
+        f"- Confidence percentile: {ev['danger_percentile']}th percentile of all WC2022 offsides\n"
+        f"- Law reference: {ev.get('law_reference', 'FIFA Law 11 — Offside')}\n"
         f"- Most important factors: {ev['top_factors']}\n"
+        f"- Source note: {ev.get('source_note', 'Use only the provided verified facts')}\n"
         f"- Outcome: {ev['outcome']}\n\n"
         f"Explain why this was offside and how dangerous the chance was."
     )
@@ -178,25 +186,89 @@ def build_chat_prompt(ev: dict, question: str, mode: str, language: str) -> str:
     lang = LANG_NAMES.get(language.upper(), "English")
     if mode == "pro":
         tone = (
-            "You are a VAR technical analyst. Use precise football and law terminology. "
-            "Reference Law 11, margins, danger probability, and spatial data where relevant. "
-            "Write 2-3 technical sentences."
+            "You are a professional football analyst. Answer in 3-4 flowing sentences. "
+            "No bullet points. No bold text. No markdown. Respond directly to the question asked "
+            "using the event data provided."
         )
     else:
         tone = (
-            "You are a friendly football fan explaining to another fan. "
-            "Use simple words, no jargon, no statistics, no law references. "
-            "Keep it short — 1-2 sentences maximum, like a text message."
+            "You are a friendly football commentator. Answer in 2-3 short clear sentences. "
+            "Never start with Hi, Hey, Totally or Similar greetings. Respond directly to the question asked "
+            "using the event data provided. Sound like a knowledgeable friend watching the match with the fan. "
+            "Do not add sympathy, emotional reactions, or comfort phrases. "
+            "Use simple words like 'just ahead', 'the goal had to come back', and 'that is why VAR stepped in'. "
+            "Avoid stiff phrases such as 'violating Law 11', 'determination was made', 'in the context of', "
+            "'aligning with standards', or 'StatsBomb' unless the fan specifically asks about data sources."
         )
     return (
         f"{tone}\n\n"
         f"Answer ONLY in {lang}.\n\n"
         f"Context — the VAR decision being discussed:\n"
         f"- {ev['player']} ruled offside at {ev['clock']} in {ev['match']}\n"
-        f"- Margin {ev['margin_cm']}cm, {ev['dist_from_goal_m']}m from goal, "
-        f"{ev['zone']}, danger {round(ev['ml_danger_prob']*100)}%\n\n"
+        f"- Tracked body point: {ev['body_part']}\n"
+        f"- Offside margin: {ev['margin_cm']}cm\n"
+        f"- Distance from goal: {ev['dist_from_goal_m']}m\n"
+        f"- Pitch zone: {ev['zone']}\n"
+        f"- Pass length: {ev['pass_length_m']}m\n"
+        f"- Danger score: {round(ev['ml_danger_prob']*100)}%\n"
+        f"- Confidence percentile: {ev['danger_percentile']}th percentile\n"
+        f"- Law reference: {ev.get('law_reference', 'FIFA Law 11 — Offside')}\n\n"
         f"Fan question: {question}\n\n"
         f"Answer the question using the context above."
+    )
+
+
+def build_selected_event(match: Optional[str] = None, player: Optional[str] = None,
+                         minute: Optional[str] = None, decision: Optional[str] = None,
+                         outcome: Optional[str] = None, zone: Optional[str] = None,
+                         confidence: Optional[str] = None, law: Optional[str] = None,
+                         source: Optional[str] = None) -> dict:
+    return {
+        "match": match or "Selected FIFA World Cup 2022 match",
+        "player": player or "Selected player/event",
+        "clock": minute or "selected minute",
+        "zone": zone or "selected pitch zone",
+        "decision": decision or "VAR decision",
+        "outcome": outcome or "Selected VAR outcome",
+        "confidence": confidence or "not shown",
+        "law": law or "Relevant FIFA Law",
+        "source": source or "selected History row",
+    }
+
+
+def build_selected_chat_prompt(ev: dict, question: str, mode: str, language: str) -> str:
+    lang = LANG_NAMES.get(language.upper(), "English")
+    if mode == "pro":
+        tone = (
+            "You are a professional football analyst. Answer in 3-4 flowing sentences. "
+            "No bullet points. No bold text. No markdown. Respond directly to the question asked "
+            "using the event data provided."
+        )
+    else:
+        tone = (
+            "You are a friendly football commentator. Answer in 2-3 short clear sentences. "
+            "Never start with Hi, Hey, Totally or Similar greetings. Respond directly to the question asked "
+            "using the event data provided. Sound like a knowledgeable friend watching the match with the fan. "
+            "Do not add sympathy, emotional reactions, or comfort phrases. "
+            "Use simple words like 'just ahead', 'the goal had to come back', and 'that is why VAR stepped in'. "
+            "Avoid stiff phrases such as 'violating Law 11', 'determination was made', 'in the context of', "
+            "'aligning with standards', or 'StatsBomb' unless the fan specifically asks about data sources."
+        )
+    return (
+        f"{tone}\n\n"
+        f"Answer ONLY in {lang}.\n\n"
+        f"Selected context:\n"
+        f"- Match: {ev['match']}\n"
+        f"- Minute: {ev['clock']}\n"
+        f"- Player/subject: {ev['player']}\n"
+        f"- Decision: {ev['decision']}\n"
+        f"- Outcome: {ev['outcome']}\n"
+        f"- Zone: {ev['zone']}\n"
+        f"- Confidence/danger shown: {ev['confidence']}\n"
+        f"- Law context: {ev['law']}\n"
+        f"- Source: {ev['source']}\n\n"
+        f"Fan question: {question}\n\n"
+        f"Answer only from the selected context above."
     )
 
 
@@ -258,9 +330,11 @@ def _extract_langflow_text(data: dict) -> str | None:
 
 async def call_ollama(prompt: str) -> str | None:
     """Call IBM Granite directly through Ollama. Returns text or None."""
+    if not OLLAMA_URL:
+        return None
     payload = {"model": GRANITE_MODEL, "prompt": prompt, "stream": False}
     try:
-        async with httpx.AsyncClient(timeout=120) as client:
+        async with httpx.AsyncClient(timeout=8) as client:
             r = await client.post(OLLAMA_URL, json=payload)
             r.raise_for_status()
             return r.json().get("response", "").strip()
@@ -286,10 +360,49 @@ async def generate(prompt: str) -> tuple[str, str]:
         return text.strip(), "ollama"
     return (
         "The AI explanation service is offline. Configure WATSONX_API_KEY / "
-        "WATSONX_PROJECT_ID (or start Ollama) to see live explanations — the "
+        "WATSONX_PROJECT_ID to see live Granite explanations — the "
         "on-screen stats are still real.",
         "offline",
     )
+
+
+def polish_fan_answer(answer: str, question: str) -> str:
+    """Keep fan mode short, friendly, and free of stiff or emotional phrasing."""
+    if not answer:
+        return answer
+    text = answer.strip()
+    lowered = text.lower()
+    for greeting in ("hi, ", "hey, ", "totally, ", "totally — ", "totally - "):
+        if lowered.startswith(greeting):
+            text = text[len(greeting):].lstrip()
+            lowered = text.lower()
+            break
+    replacements = {
+        "violating Law 11": "being just ahead of the defensive line",
+        "violating law 11": "being just ahead of the defensive line",
+        "deemed offside": "called offside",
+        "determination was made": "VAR made the call",
+        "in the context of": "in",
+        "against the law": "not allowed by the offside rule",
+        "using StatsBomb data, ": "",
+        "using StatsBomb data": "",
+        "with StatsBomb data, ": "",
+        "with StatsBomb data": "",
+        "StatsBomb data": "the match data",
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    empathy_phrases = (
+        "I get why that hurts—it would have been a huge goal—but ",
+        "I get why that hurts - it would have been a huge goal - but ",
+        "I get why that hurts. ",
+        "It is a brutal one, but ",
+        "It's a brutal one, but ",
+        "That would have been a huge goal, but ",
+    )
+    for phrase in empathy_phrases:
+        text = text.replace(phrase, "")
+    return text
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -362,20 +475,23 @@ async def var_event(event_id: str, mode: str = "fan", language: str = "EN"):
 
 
 @app.get("/chat/{event_id}")
-async def chat(event_id: str, q: str = "", mode: str = "fan", language: str = "EN"):
+async def chat(event_id: str, q: str = "", mode: str = "fan", language: str = "EN",
+               match: Optional[str] = None, player: Optional[str] = None,
+               minute: Optional[str] = None, decision: Optional[str] = None,
+               outcome: Optional[str] = None, zone: Optional[str] = None,
+               confidence: Optional[str] = None, law: Optional[str] = None,
+               source: Optional[str] = None):
     ev = EVENTS.get(event_id)
-    # P3: return error for unknown event — consistent with /var-event behaviour
-    if not ev:
-        return {
-            "ai_response": {"explanation": f"Event '{event_id}' not found."},
-            "event_id": event_id,
-            "error": f"Unknown event_id '{event_id}'",
-            "valid_event_ids": list(EVENTS.keys()),
-        }
     if not q.strip():
         return {"ai_response": {"explanation": "Ask a question about the VAR decision."}}
-    prompt = build_chat_prompt(ev, q, mode, language)
+    if ev:
+        prompt = build_chat_prompt(ev, q, mode, language)
+    else:
+        ev = build_selected_event(match, player, minute, decision, outcome, zone, confidence, law, source)
+        prompt = build_selected_chat_prompt(ev, q, mode, language)
     explanation, source = await generate(prompt)
+    if mode == "fan" and source != "offline":
+        explanation = polish_fan_answer(explanation, q)
     return {
         "ai_response": {"explanation": explanation},
         "event_id": event_id,
