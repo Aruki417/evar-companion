@@ -178,7 +178,7 @@ Then open `http://localhost:3000` in your browser.
 ## Live Demo
 
 **Streamlit app:** [evar-companion.streamlit.app](https://evar-companion.streamlit.app)
-**Demo video:** [YouTube link — coming June 26 2026]
+**Demo video:** [Watch Demo](https://drive.google.com/file/d/1_vV9ufHR4JpMKFfRmijwwhhY7jeZe0En/view?usp=sharing)
 
 ---
 
