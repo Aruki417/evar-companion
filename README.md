@@ -3,7 +3,7 @@
 **AI-powered VAR offside explainer for football fans**
 IBM SkillsBuild AI Builders Challenge · June 2026
 
-**Demo video:** [Watch Demo](https://drive.google.com/file/d/1_vV9ufHR4JpMKFfRmijwwhhY7jeZe0En/view?usp=sharing)
+**Demo video:** [Watch Demo](https://drive.google.com/file/d/1Jh1ueNdoU3TUfgg-hmfpsKoRlrSKiVtp/view?usp=sharing)
 [![IBM Granite](https://img.shields.io/badge/AI-IBM%20Granite%20via%20watsonx.ai-blue)](https://www.ibm.com/watsonx)
 [![Languages](https://img.shields.io/badge/Languages-23-green)]()
 
